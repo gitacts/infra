@@ -1,0 +1,152 @@
+version: '3.6'
+
+services:
+  gitacts-infra-rabbitmq:
+    platform: "linux/arm64"
+    image: "rabbitmq:3.7.17-management"
+    container_name: "gitacts-infra-rabbitmq"
+    hostname: "rabbitmq.local"
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "rabbitmq"
+      RABBITMQ_DEFAULT_PASS: "agaeq14"
+      RABBITMQ_DEFAULT_VHOST: "/"
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+      - "5672"
+    networks:
+      - gitacts
+
+  gitacts-infra-elasticsearch:
+    platform: "linux/arm64"
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.2
+    container_name: "gitacts-infra-elasticsearch"
+    hostname: "elasticsearch"
+    ports:
+      - 9200:9200
+      - 9200
+    healthcheck:
+      test: [ "CMD", "curl","-s" ,"-f", "http://localhost:9200/_cat/health" ]
+      interval: 5s
+    environment:
+      node.name: "elasticsearch"
+      ES_JAVA_OPTS: "-Xmx500m -Xms500m -Des.logger.level=INFO"
+      discovery-type: "single-node"
+      cluster.initial_master_nodes: "elasticsearch"
+    deploy:
+      resources:
+        limits:
+          memory: 700M
+        reservations:
+          memory: 600M
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - gitacts-infra-elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      - gitacts
+
+  gitacts-infra-kibana:
+    platform: "linux/x86_64"
+    image: docker.elastic.co/kibana/kibana:7.14.2
+    container_name: "gitacts-infra-kibana"
+    hostname: "kibana"
+    environment:
+      ELASTICSEARCH_HOSTS: "http://gitacts-infra-elasticsearch:9200"
+    ports:
+      - 5601:5601
+    healthcheck:
+      test: [ "CMD", "curl", "-s", "-f", "http://localhost:5601/login" ]
+      retries: 10
+    networks:
+      - gitacts
+    depends_on:
+      - gitacts-infra-elasticsearch
+
+  #  #
+  #  #  Jaeger (for tracing)
+  #  #
+  #  jaeger:
+  #    image: jaegertracing/all-in-one:latest
+  #    container_name: "gitacts-infra-infra-jaeger"
+  #    hostname: "jaeger"
+  #    restart: always
+  #    environment:
+  #      SPAN_STORAGE_TYPE: "elasticsearch"
+  #      ES_SERVER_URLS: "http://elasticsearch:9200"
+  #    ports:
+  #      - "6831:6831/udp" # Thrift Protocol
+  #      - "16686:16686"   # Web Frontend
+  #    networks:
+  #      - sp
+  #    depends_on:
+  #      - gitacts-infra-elasticsearch
+  #    logging:
+  #      driver: fluentd
+  #      options:
+  #        fluentd-address: fluentd:24224
+  #        fluentd-async-connect: 'true'
+  #        fluentd-retry-wait: '1s'
+  #        fluentd-max-retries: '30'
+  #        tag: jaeger
+  #
+#  gitacts-infra-grafana:
+#    image: grafana/grafana
+#    platform: linux/x86_64
+#    container_name: "gitacts-infra-grafana"
+#    hostname: "grafana"
+#    volumes:
+#      - gitacts-infra-grafana:/etc/grafana/provisioning/
+#    environment:
+#      - VIRTUAL_HOST=grafana.local
+#      - GF_SERVER_ROOT_URL=http://grafana.loc
+#      - GF_DATABASE_NAME=grafana
+#      - GF_DATABASE_USER=mysql
+#      - GF_DATABASE_PASSWORD=mysql
+#      - GF_DATABASE_TYPE=mysql
+#      - GF_DATABASE_HOST=mysql:3306
+#      - GF_DATABASE_MAX_OPEN_CONN=300
+#      - GF_SESSION_PROVIDER=mysql
+#      - GF_SESSION_PROVIDER_CONFIG=grafana:password@tcp(db:3306)/grafana?allowNativePasswords=true
+#      - GF_SERVER_ROUTER_LOGGING=true
+#      - GF_LOG_CONSOLE_FORMAT=json
+#      - GF_LOG_FILTERS=alerting.notifier:debug,alerting.notifier.slack:debug,auth:debug
+#      - GF_AUTH_TOKEN_ROTATION_INTERVAL_MINUTES=2
+#    ports:
+#      - 3000:3000
+#    depends_on:
+#      - gitacts-infra-mysql
+
+  gitacts-infra-mysql:
+    image: mysql:8
+    platform: linux/x86_64
+    container_name: gitacts-infra-mysql
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_USER: "mysql"
+      MYSQL_PASSWORD: "mysql"
+      MYSQL_ROOT_PASSWORD: "mysql"
+      MYSQL_ALLOW_EMPTY_PASSWORD: "no"
+      MYSQL_DATABASE: "gitacts"
+    volumes:
+      - gitacts-infra-mysql:/var/lib/mysql
+    networks:
+      - gitacts
+
+volumes:
+  gitacts-infra-mysql:
+  gitacts-infra-elasticsearch:
+  gitacts-infra-grafana:
+
+networks:
+  gitacts:
+    external: true
